@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 2.8)
+project( aruco_tracking )
+find_package( OpenCV REQUIRED )
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+add_executable( aruco_tracking main.cpp )
+target_link_libraries( aruco_tracking ${OpenCV_LIBS} )
