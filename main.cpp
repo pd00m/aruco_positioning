@@ -13,8 +13,11 @@
 const float CALIBRATION_SQUARE_DIMENSION = 0.0251f; // Grid size of calibartion rectangles (meters)
 const cv::Size CHESSBOARD_DIMENSIONS = cv::Size(6, 9); // Overall size of calibration chessboard pattern
 const float ARUCO_SQUARE_DIMENSION = 0.0251f; // Size of aruco markers (meters)
-const double CAMERA_RESOLUTION_X = 1920; // Camera Resolution X
-const double CAMERA_RESOLUTION_Y = 1080; // Camera Resolution Y
+const double CAMERA_RESOLUTION_X = 1280; // Camera Resolution X
+const double CAMERA_RESOLUTION_Y = 720; // Camera Resolution Y
+
+const double CAMERA_MIDPOINT_X = CAMERA_RESOLUTION_X/2;
+const double CAMERA_MIDPOINT_Y = CAMERA_RESOLUTION_Y/2;
 
 // Creates Chessboard data structure for calibration
 void createKnownBoardPositions(cv::Size boardSize, float squareEdgeLength, std::vector<cv::Point3f>& corners) 
@@ -117,7 +120,7 @@ int cameraCalibrationProcess(cv::Mat& cameraMatrix, cv::Mat& distortionCoefficie
     std::vector<cv::Mat> savedImages;
 
     std::vector<std::vector<cv::Point2f>> markerCorners, rejectedCandidates;
-    cv::VideoCapture vid(0);
+    cv::VideoCapture vid(0 + cv::CAP_ANY);
     vid.set(cv::CAP_PROP_FRAME_WIDTH,CAMERA_RESOLUTION_X);
     vid.set(cv::CAP_PROP_FRAME_HEIGHT,CAMERA_RESOLUTION_Y);
 
@@ -243,11 +246,14 @@ cv::Vec3f rotationMatrixToEulerAngles(cv::Mat &R)
 // Tracks markers
 int startWebcamMonitoring(const cv::Mat& cameraMatrix, const cv::Mat& distortionCoefficients, float arucoSquareDimensions)
 {
-    cv::Mat frame;
+    cv::Mat frame, flipMatrix;
     std::vector<int> markerIds;
     std::vector<std::vector<cv::Point2f>> markerCorners, rejectedCandidates;	
     cv::aruco::DetectorParameters parameters;
     cv::Ptr<cv::aruco::Dictionary> markerDictionary = cv::aruco::getPredefinedDictionary(cv::aruco::PREDEFINED_DICTIONARY_NAME::DICT_4X4_50);
+
+
+    flipMatrix = (cv::Mat_<double>(3,3) << 1,0,0,  0,-1,0,  0,0,-1);
 
     cv::VideoCapture vid(0 + cv::CAP_ANY);
     vid.set(cv::CAP_PROP_FRAME_WIDTH,CAMERA_RESOLUTION_X);
@@ -276,24 +282,32 @@ int startWebcamMonitoring(const cv::Mat& cameraMatrix, const cv::Mat& distortion
             cv::aruco::drawDetectedMarkers(frame, markerCorners, markerIds);
         }
 
+        // Draw crosshair in the middle of camera feed
+        cv::line(frame, cv::Point(CAMERA_MIDPOINT_X-20,CAMERA_MIDPOINT_Y), cv::Point(CAMERA_MIDPOINT_X+20,CAMERA_MIDPOINT_Y),cv::Scalar(255, 0, 0), 2, cv::LINE_AA);
+        cv::line(frame, cv::Point(CAMERA_MIDPOINT_X,CAMERA_MIDPOINT_Y-20), cv::Point(CAMERA_MIDPOINT_X,CAMERA_MIDPOINT_Y+20),cv::Scalar(255, 0, 0), 2, cv::LINE_AA);
+        
         std::cout << "\033[2J\033[1;1H";
         for (int i = 0; i < markerIds.size(); i++)
         {
-            cv::aruco::drawAxis(frame, cameraMatrix, distortionCoefficients, rotationVectors[i], translationVectors[i], 0.1f);
+            cv::aruco::drawAxis(frame, cameraMatrix, distortionCoefficients, rotationVectors[i], translationVectors[i], 0.03f);
             
             // Get euler angles of Markers
-            cv::Mat matTmp;
+            cv::Mat matTmp, matTmpTransposed, test;
             cv::Rodrigues(rotationVectors[i], matTmp);
-            cv::Vec3f eulerAngles = rotationMatrixToEulerAngles(matTmp);
+            cv::transpose(matTmp, matTmpTransposed);
+            test = matTmpTransposed * flipMatrix;
+            cv::Vec3f eulerAngles = rotationMatrixToEulerAngles(test);
 
             // Console output of marker positions
             std::cout << " ------------------------------------------------------- " << std::endl;
             std::cout << "Marker: " << i << std::endl;
-            std::cout << "X: " << translationVectors[i][0] << "  Y: " << translationVectors[i][0] << "  Z: " << translationVectors[i][0] << std::endl;
+            std::cout << "X: " << translationVectors[i][0] << "  Y: " << translationVectors[i][1] << "  Z: " << translationVectors[i][2] << std::endl;
             std::cout << "Yaw: " << eulerAngles[0] << "  Pitch: " << eulerAngles[1] << "  Roll: " << eulerAngles[2] << std::endl;
             std::cout << std::endl;
 
-            
+            cv::Point p = cv::Point(markerCorners[i].at(1).x-markerCorners[i].at(0).x,translationVectors[i][3]);
+
+            cv::line(frame, markerCorners[i].at(0), cv::Point(CAMERA_MIDPOINT_X,CAMERA_MIDPOINT_Y),cv::Scalar(0, 255, 255), 2, cv::LINE_AA);
             rectangle(frame, markerCorners[i].at(0), cv::Point(markerCorners[i].at(0).x + 25.0, markerCorners[i].at(0).y + 25.0), cv::Scalar(255, 0, 0), 2);
         }
         
